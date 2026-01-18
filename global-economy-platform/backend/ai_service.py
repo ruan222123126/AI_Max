@@ -91,6 +91,12 @@ async def fetch_market_context(engine, symbol: str, hours: int = 24) -> Dict:
         else:
             trend = "强势下跌"
 
+        # 查询最近 5 条新闻
+        news_query = text("SELECT title, source, published_at FROM financial_news ORDER BY published_at DESC LIMIT 5;")
+        news_result = await conn.execute(news_query)
+        news_rows = news_result.fetchall()
+        news_titles = [{"title": row.title, "source": row.source, "published_at": row.published_at} for row in news_rows]
+
         return {
             "symbol": symbol,
             "current_price": current_price,
@@ -102,7 +108,8 @@ async def fetch_market_context(engine, symbol: str, hours: int = 24) -> Dict:
             "volatility": volatility,
             "trend": trend,
             "data_points": len(prices),
-            "time_range": "过去24小时"
+            "time_range": "过去24小时",
+            "recent_news": news_titles
         }
 
 
@@ -118,7 +125,7 @@ def build_analysis_prompt(context: Dict) -> str:
     """
     system_instruction = """你是一位专业的华尔街宏观策略师和金融分析师。
 
-你的任务是根据提供的真实市场数据，撰写一份简明、专业的财经简报。
+你的任务是根据提供的真实市场数据和最新新闻，撰写一份简明、专业的财经简报。
 
 请遵循以下原则：
 1. **数据驱动**：仅基于提供的数据进行分析，不要编造数据
@@ -126,12 +133,24 @@ def build_analysis_prompt(context: Dict) -> str:
 3. **洞察深刻**：不仅描述"发生了什么"，更要分析"意味着什么"
 4. **结构清晰**：使用 Markdown 格式，包含市场概况、技术分析、风险提示等部分
 5. **行动导向**：在适当的情况下提供观察和展望（不构成投资建议）
+6. **新闻感知**：结合最新市场新闻分析价格波动的原因
 
 输出格式要求：
 - 使用 Markdown 格式
 - 总字数控制在 300-500 字
 - 使用emoji图标增强可读性
 - 重点内容使用加粗标注"""
+
+    # 构建新闻上下文
+    news_section = ""
+    if context.get('recent_news') and len(context['recent_news']) > 0:
+        news_items = []
+        for news in context['recent_news'][:5]:
+            news_items.append(f"- **{news['title']}** ({news['source']})")
+        news_section = f"""
+### 最新市场新闻
+{chr(10).join(news_items)}
+"""
 
     user_data = f"""
 ## 市场数据
@@ -151,7 +170,8 @@ def build_analysis_prompt(context: Dict) -> str:
 - **趋势判断**: {context['trend']}
 - **数据点数**: {context['data_points']} 个
 
-请基于以上数据，为投资者撰写一份专业的市场分析简报。
+{news_section}
+请基于以上价格数据和新闻标题，综合分析市场走势和可能的驱动因素，为投资者撰写一份专业的市场分析简报。
 """
 
     return f"{system_instruction}\n\n{user_data}"

@@ -6,3 +6,5 @@ yfinance
 openai>=1.0.0
 python-dotenv
 apscheduler
+feedparser
+beautifulsoup4

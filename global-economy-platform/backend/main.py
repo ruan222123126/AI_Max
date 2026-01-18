@@ -26,6 +26,17 @@ class MarketTick(BaseModel):
     class Config:
         from_attributes = True
 
+class FinancialNews(BaseModel):
+    id: int
+    published_at: datetime
+    title: str
+    source: str
+    url: str
+    sentiment_score: float
+
+    class Config:
+        from_attributes = True
+
 # --- 启动事件 ---
 @app.on_event("startup")
 async def startup_event():
@@ -44,6 +55,19 @@ async def startup_event():
         except Exception as e:
             print(f"TimescaleDB info: {e}")
 
+    # 2. 创建新闻表
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS financial_news (
+                id SERIAL PRIMARY KEY,
+                published_at TIMESTAMPTZ NOT NULL,
+                title TEXT NOT NULL,
+                source TEXT,
+                url TEXT UNIQUE,
+                sentiment_score FLOAT
+            );
+        """))
+
     # 启动自动化任务
     start_scheduler()
 
@@ -56,7 +80,8 @@ async def root():
         "endpoints": [
             "/market/latest",
             "/market/history/{symbol}",
-            "/ai/analyze"
+            "/ai/analyze",
+            "/news/latest"
         ]
     }
 
@@ -106,6 +131,32 @@ async def get_market_history(
         return [
             {"time": row.time, "symbol": row.symbol, "price": row.price}
             for row in rows
+        ]
+
+
+@app.get("/news/latest", response_model=List[FinancialNews])
+async def get_latest_news(limit: int = Query(20, le=100)):
+    """
+    获取最新的财经新闻
+    """
+    async with engine.connect() as conn:
+        query = text("""
+            SELECT id, published_at, title, source, url, sentiment_score
+            FROM financial_news
+            ORDER BY published_at DESC
+            LIMIT :limit;
+        """)
+        result = await conn.execute(query, {"limit": limit})
+        return [
+            {
+                "id": row.id,
+                "published_at": row.published_at,
+                "title": row.title,
+                "source": row.source,
+                "url": row.url,
+                "sentiment_score": row.sentiment_score
+            }
+            for row in result
         ]
 
 
