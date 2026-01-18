@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ArrowUp, ArrowDown, Activity } from "lucide-react";
+import { ArrowUp, ArrowDown, Activity, Sparkles, Loader2 } from "lucide-react";
 
 // Define data types
 interface MarketTick {
@@ -11,11 +11,22 @@ interface MarketTick {
   price: number;
 }
 
+interface AIAnalysisResponse {
+  symbol: string;
+  analysis: string;
+  generated_at: string;
+}
+
 export default function Home() {
   const [latestData, setLatestData] = useState<MarketTick[]>([]);
   const [historyData, setHistoryData] = useState<MarketTick[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState("BTC-USD");
   const [loading, setLoading] = useState(true);
+
+  // AI 分析相关状态
+  const [aiAnalysis, setAiAnalysis] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Fetch data function
   const fetchData = async () => {
@@ -34,6 +45,50 @@ export default function Home() {
       setLoading(false);
     } catch (error) {
       console.error("Fetch error:", error);
+    }
+  };
+
+  // AI 分析函数
+  const fetchAIAnalysis = async () => {
+    setAiLoading(true);
+    setShowAnalysis(true);
+    setAiAnalysis(""); // 清空之前的分析
+
+    try {
+      const response = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ symbol: selectedSymbol }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data: AIAnalysisResponse = await response.json();
+
+      // 打字机效果显示分析结果
+      const text = data.analysis;
+      let index = 0;
+      const speed = 10; // 打字速度（毫秒）
+
+      const typeWriter = () => {
+        if (index < text.length) {
+          setAiAnalysis((prev) => prev + text.charAt(index));
+          index++;
+          setTimeout(typeWriter, speed);
+        } else {
+          setAiLoading(false);
+        }
+      };
+
+      typeWriter();
+    } catch (error) {
+      console.error("AI Analysis error:", error);
+      setAiAnalysis("❌ 分析失败：无法获取 AI 分析结果。请检查后端服务是否正常运行，以及 API 密钥是否配置正确。");
+      setAiLoading(false);
     }
   };
 
@@ -122,6 +177,63 @@ export default function Home() {
               </ResponsiveContainer>
             )}
           </div>
+        </div>
+
+        {/* AI 智能分析区域 */}
+        <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold flex items-center">
+              <Sparkles className="w-6 h-6 text-purple-400 mr-2" />
+              AI 智能分析
+            </h2>
+            <button
+              onClick={fetchAIAnalysis}
+              disabled={aiLoading}
+              className={`flex items-center space-x-2 px-6 py-2 rounded-lg font-medium transition-all ${
+                aiLoading
+                  ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                  : "bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 hover:scale-105"
+              }`}
+            >
+              {aiLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>分析中...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>生成分析报告</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* AI 分析结果显示区域 */}
+          {showAnalysis && (
+            <div className="bg-slate-800/50 rounded-lg p-6 border border-slate-700">
+              {aiLoading && aiAnalysis === "" ? (
+                <div className="flex items-center justify-center py-12 text-slate-400">
+                  <Loader2 className="w-8 h-8 animate-spin mr-3" />
+                  <span>AI 正在分析市场数据...</span>
+                </div>
+              ) : (
+                <div className="prose prose-invert max-w-none">
+                  <div
+                    className="markdown-content"
+                    dangerouslySetInnerHTML={{
+                      __html: aiAnalysis
+                        .replace(/\n/g, '<br/>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/### (.*?)(<br\/>|$)/g, '<h3 class="text-lg font-bold text-purple-400 mt-4 mb-2">$1</h3>')
+                        .replace(/## (.*?)(<br\/>|$)/g, '<h2 class="text-xl font-bold text-blue-400 mt-6 mb-3">$1</h2>')
+                        .replace(/- (.*?)(<br\/>|$)/g, '<li class="ml-4">$1</li>')
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
       </div>

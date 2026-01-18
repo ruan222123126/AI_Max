@@ -1,10 +1,13 @@
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 import os
+
+# 导入 AI 服务模块
+from ai_service import generate_market_analysis
 
 app = FastAPI(title="Global Economy Platform API")
 
@@ -45,7 +48,11 @@ async def startup_event():
 async def root():
     return {
         "status": "online",
-        "endpoints": ["/market/latest", "/market/history/{symbol}"]
+        "endpoints": [
+            "/market/latest",
+            "/market/history/{symbol}",
+            "/ai/analyze"
+        ]
     }
 
 @app.get("/market/latest", response_model=List[MarketTick])
@@ -95,3 +102,47 @@ async def get_market_history(
             {"time": row.time, "symbol": row.symbol, "price": row.price}
             for row in rows
         ]
+
+
+# --- AI 分析接口 ---
+
+class AnalysisRequest(BaseModel):
+    symbol: str
+    custom_question: Optional[str] = None
+
+
+class AnalysisResponse(BaseModel):
+    symbol: str
+    analysis: str
+    generated_at: datetime
+
+
+@app.post("/ai/analyze", response_model=AnalysisResponse)
+async def analyze_market(request: AnalysisRequest):
+    """
+    AI 智能市场分析接口
+
+    基于 TimescaleDB 的历史数据，使用 DeepSeek LLM 生成专业的财经分析报告。
+
+    Args:
+        request: 包含 symbol（资产代码）和可选的 custom_question（自定义问题）
+
+    Returns:
+        AI 生成的分析报告
+
+    Example:
+        POST /ai/analyze
+        {
+            "symbol": "BTC-USD",
+            "custom_question": "现在的市场适合入场吗？"
+        }
+    """
+    # 调用 AI 服务生成分析
+    analysis = await generate_market_analysis(engine, request.symbol)
+
+    return {
+        "symbol": request.symbol,
+        "analysis": analysis,
+        "generated_at": datetime.utcnow()
+    }
+

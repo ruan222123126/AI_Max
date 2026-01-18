@@ -30,6 +30,8 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@db:5432/economy_data
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: https://api.deepseek.com
     depends_on:
       db:
         condition: service_healthy
