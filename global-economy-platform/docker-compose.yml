@@ -33,3 +33,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # 3. 前端仪表盘：Next.js
+  frontend:
+    build: ./frontend
+    container_name: economy_frontend
+    # 启用轮询机制以支持 Windows/Linux 挂载卷的热重载
+    environment:
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
