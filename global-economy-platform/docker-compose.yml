@@ -1,51 +1,53 @@
 version: '3.8'
 
 services:
-  # 1. 核心数据库：TimescaleDB (基于 Postgres)
+  # 1. 数据库：数据持久化核心
   db:
     image: timescale/timescaledb:latest-pg15
     container_name: economy_db
+    restart: always  # 生产环境必备：崩溃/重启后自动启动
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: economy_data
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d economy_data"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
-  # 2. 后端 API：FastAPI
+  # 2. 后端：API 与 AI 大脑
   backend:
     build: ./backend
     container_name: economy_backend
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
     volumes:
-      - ./backend:/app
+      - ./backend:/app  # 生产环境可以去掉这个挂载以保证镜像不可变性，但保留以便微调
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@db:5432/economy_data
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: https://api.deepseek.com
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
 
-  # 3. 前端仪表盘：Next.js
+  # 3. 前端：可视化指挥舱
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 在构建时传入 API 地址（可选，因为使用 Next.js rewrites）
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: economy_frontend
-    # 启用轮询机制以支持 Windows/Linux 挂载卷的热重载
-    environment:
-      - WATCHPACK_POLLING=true
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    restart: always
     ports:
       - "3000:3000"
     depends_on:
