@@ -8,6 +8,8 @@ import os
 
 # 导入 AI 服务模块
 from ai_service import generate_market_analysis
+# 导入调度器
+from scheduler import start_scheduler, shutdown_scheduler
 
 app = FastAPI(title="Global Economy Platform API")
 
@@ -41,6 +43,9 @@ async def startup_event():
             await conn.execute(text("SELECT create_hypertable('market_ticks', 'time', if_not_exists => TRUE);"))
         except Exception as e:
             print(f"TimescaleDB info: {e}")
+
+    # 启动自动化任务
+    start_scheduler()
 
 # --- API 接口 ---
 
@@ -145,4 +150,9 @@ async def analyze_market(request: AnalysisRequest):
         "analysis": analysis,
         "generated_at": datetime.utcnow()
     }
+
+# --- 关闭事件 ---
+@app.on_event("shutdown")
+async def shutdown_event():
+    shutdown_scheduler()
 
